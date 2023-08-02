@@ -1,0 +1,25 @@
+version: '3.1'
+services:
+  postgres:
+    image: postgres:latest
+    restart: always
+    environment:
+      - POSTGRES_PASSWORD=pgpass
+      - POSTGRES_USER=pguser
+      - POSTGRES_DB=pgdb
+    volumes:
+      - ./pg_data:/var/lib/postgresql/data
+      - ./sql_scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+  clickhouse-server:
+    image: yandex/clickhouse-server
+    container_name: clickhouse-server
+    ports:
+      - '8123:8123'
+      - '9000:9000'
+    volumes:
+      - ./clickhouse:/var/lib/clickhouse
+      - ./ch_scripts:/docker-entrypoint-initdb.d
+    ulimits:
+      nofile: 262144
