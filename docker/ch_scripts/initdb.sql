@@ -1,20 +1,15 @@
-CREATE TABLE IF NOT EXISTS PROJECTS(
-id integer UNIQUE NOT NULL PRIMARY KEY,
-name varchar(40) NOT NULL,
-created_at TIMESTAMP DEFAULT NOW()
-);
 CREATE TABLE IF NOT EXISTS GOODS(
-id integer UNIQUE NOT NULL PRIMARY KEY,
-project_id integer UNIQUE NOT NULL,
-name varchar(40) NOT NULL,
-description varchar(40),
-priority SERIAL,
-removed BOOLEAN DEFAULT FALSE,
-created_at TIMESTAMP DEFAULT NOW(),
-CONSTRAINT fk_project_id FOREIGN KEY (project_id) REFERENCES PROJECTS(id)
-);
-CREATE UNIQUE INDEX p_id ON PROJECTS (id);
-CREATE UNIQUE INDEX g_id ON GOODS (id);
-CREATE UNIQUE INDEX g_name ON GOODS (name);
-INSERT INTO PROJECTS(id, name) VALUES (1, 'First entry');
-INSERT INTO GOODS(id, project_id, name, description) VALUES (1, 1, 'good_1', 'First entry');
+Id Int32,
+ProjectId Int32,
+Name String,
+Description String,
+Priority Int32,
+Removed Bool,
+EventTime DateTime
+)
+ENGINE = MergeTree()
+ORDER BY Id;
+
+ALTER TABLE default.GOODS ADD INDEX index_id(Id) TYPE minmax GRANULARITY 8192;
+ALTER TABLE default.GOODS ADD INDEX index_project_id(ProjectId) TYPE minmax GRANULARITY 8192;
+ALTER TABLE default.GOODS ADD INDEX index_project_name(Name) TYPE bloom_filter GRANULARITY 8192;

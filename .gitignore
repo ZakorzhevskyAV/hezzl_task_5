@@ -1,0 +1,3 @@
+docker/pg_data
+docker/clickhouse
+*.exe
