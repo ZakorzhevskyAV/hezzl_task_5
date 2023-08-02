@@ -8,7 +8,7 @@ id SERIAL PRIMARY KEY,
 project_id integer UNIQUE NOT NULL,
 name varchar(40) NOT NULL,
 description varchar(40),
-priority SERIAL,
+priority integer,
 removed BOOLEAN NOT NULL DEFAULT FALSE,
 created_at TIMESTAMP DEFAULT NOW(),
 CONSTRAINT fk_project_id FOREIGN KEY (project_id) REFERENCES PROJECTS(id)

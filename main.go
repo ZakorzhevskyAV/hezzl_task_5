@@ -1,45 +1,42 @@
 package main
 
 import (
-	"fmt"
 	"github.com/gorilla/mux"
+	"hezzl_task_5/clickhouse_logging"
+	"hezzl_task_5/nats_queueing"
 	"hezzl_task_5/postgresql"
+	"hezzl_task_5/redis_caching"
 	"hezzl_task_5/routes"
 	"log"
 	"net/http"
-	"strings"
 )
 
 func init() {
 	var err error
 	err = postgresql.DBConnect()
 	if err != nil {
-		log.Fatal("Failed to connect to DB")
+		log.Fatalf("Failed to connect to DB: %s\n", err)
 	}
 
-	err := cache.Connect()
+	err = clickhouse_logging.CHConnect()
 	if err != nil {
-		initErrors = append(initErrors, err.Error())
+		log.Fatalf("Failed to connect to CH: %s\n", err)
 	}
 
-	err = logs.Connect()
+	err = nats_queueing.NatsConnect()
 	if err != nil {
-		initErrors = append(initErrors, err.Error())
+		log.Fatalf("Failed to connect to Nats: %s\n", err)
 	}
 
-	err = nats.Connect()
+	err = redis_caching.RedisConnect()
 	if err != nil {
-		initErrors = append(initErrors, err.Error())
+		log.Fatalf("Failed to connect to Redis: %s\n", err)
 	}
 
-	if len(initErrors) != 0 {
-		panic(fmt.Sprintf("Запуск приложения невозможен из-за следующих ошибок инициализации %s", strings.Join(initErrors, ",\n")))
-	}
-
-	go func() { // работа без логирования возможна, но на эту ошибку нужно будет обратить внимание
-		err := nats.Subscribe()
+	go func() {
+		err := nats_queueing.NatsSubscribe()
 		if err != nil {
-			log.Printf("Получение логов невозможно, Nats возвращает в подписчике: %s\n", err.Error())
+			log.Printf("Failed to subscribe to CH: %s\n", err)
 		}
 	}()
 }

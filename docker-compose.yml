@@ -1,4 +1,4 @@
-version: '3.1'
+version: '3.4'
 services:
   postgres:
     networks:
@@ -15,7 +15,7 @@ services:
     ports:
       - '5432:5432'
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: [ "CMD-SHELL", "pg_isready -U pguser -d pgdb" ]
       interval: 5s
       timeout: 10s
       start_period: 20s
@@ -54,25 +54,24 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      ports:
-        - '8000:8000'
-      environment:
-        APP_ENV: docker
-        APP_PORT: :8000
-
-        POSTGRES_PASSWORD: pgpass
-        POSTGRES_USER: pguser
-        POSTGRES_DB: pgdb
-        POSTGRES_HOST: postgres
-
-        CLICKHOUSE_HOST: clickhouse-server
-        CLICKHOUSE_PASSWORD: chpass
-        CLICKHOUSE_USER: chuser
-        CLICKHOUSE_DB: chdb
-      depends_on:
-        - clickhouse-server
-        - redis
-        - nats
-
+    ports:
+      - '8000:8000'
+    environment:
+      POSTGRES_PASSWORD: pgpass
+      POSTGRES_USER: pguser
+      POSTGRES_DB: pgdb
+      POSTGRES_HOST: postgres
+      REDIS_DB: 0
+      REDIS_HOST: redis:6379
+      NATS_QUEUE: goods.create
+      NATS_HOST: nats
+      CLICKHOUSE_HOST: clickhouse-server
+      CLICKHOUSE_PASSWORD: chpass
+      CLICKHOUSE_USER: chuser
+      CLICKHOUSE_DB: chdb
+    depends_on:
+      - clickhouse-server
+      - redis
+      - nats
 networks:
   new:
