@@ -1,8 +1,11 @@
 version: '3.4'
 services:
   postgres:
+    container_name: postgres
     networks:
-      - new
+      some_network:
+        aliases:
+          - postgres
     image: postgres:latest
     restart: always
     environment:
@@ -21,13 +24,17 @@ services:
       start_period: 20s
       retries: 5
   clickhouse-server:
+    restart: always
     networks:
-      - new
-    image: yandex/clickhouse-server
+      some_network:
+        aliases:
+          - clickhouse-server
+    image: yandex/clickhouse-server:latest
     container_name: clickhouse-server
     environment:
       CLICKHOUSE_USER: chuser
       CLICKHOUSE_PASSWORD: chpass
+      CLICKHOUSE_INIT_TIMEOUT: 60
     ports:
       - '8123:8123'
       - '9000:9000'
@@ -37,20 +44,28 @@ services:
     ulimits:
       nofile: 262144
   nats:
+    container_name: nats
     networks:
-      - new
+      some_network:
+        aliases:
+          - nats
     image: nats:latest
     ports:
       - '4222:4222'
       - '6222:6222'
       - '8222:8222'
   redis:
+    networks:
+      some_network:
+        aliases:
+          - redis
     image: "redis:latest"
     ports:
       - "6379:6379"
   app:
+    restart: always
     networks:
-      - new
+      - some_network
     build:
       context: .
       dockerfile: Dockerfile
@@ -63,15 +78,16 @@ services:
       POSTGRES_HOST: postgres
       REDIS_DB: 0
       REDIS_HOST: redis:6379
-      NATS_QUEUE: goods.create
+      NATS_QUEUE: good.create
       NATS_HOST: nats
       CLICKHOUSE_HOST: clickhouse-server
       CLICKHOUSE_PASSWORD: chpass
       CLICKHOUSE_USER: chuser
-      CLICKHOUSE_DB: chdb
+      CLICKHOUSE_DB: default
     depends_on:
+      - postgres
       - clickhouse-server
       - redis
       - nats
 networks:
-  new:
+  some_network:

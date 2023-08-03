@@ -13,7 +13,7 @@ import (
 var NatsConn *nats.Conn
 
 func NatsConnect() error {
-	conn, err := nats.Connect(fmt.Sprintf("nats_queueing://%s:4222", os.Getenv("NATS_HOST")))
+	conn, err := nats.Connect(fmt.Sprintf("nats://%s:4222", os.Getenv("NATS_HOST")))
 	if err != nil {
 		return err
 	}

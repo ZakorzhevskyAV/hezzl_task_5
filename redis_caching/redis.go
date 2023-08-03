@@ -15,12 +15,9 @@ var RedisClient *redis.Client
 
 func RedisConnect() error {
 	db, _ := strconv.Atoi(os.Getenv("REDIS_DB"))
-	var addr string
-
-	addr = "localhost"
 
 	RedisClient = redis.NewClient(&redis.Options{
-		Addr:     addr,
+		Addr:     os.Getenv("REDIS_HOST"),
 		Password: "",
 		DB:       db,
 	})
@@ -49,7 +46,7 @@ func SetGoods(key string, goods []types.Goods) {
 	RedisClient.Set(ctx, key, jsonData, time.Minute)
 }
 
-func InvalidateItems() error {
+func InvalidateGoods() error {
 	err := RedisClient.Del(ctx, "goods").Err()
 	return err
 }
