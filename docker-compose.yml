@@ -34,7 +34,7 @@ services:
     environment:
       CLICKHOUSE_USER: chuser
       CLICKHOUSE_PASSWORD: chpass
-      CLICKHOUSE_INIT_TIMEOUT: 60
+      CLICKHOUSE_INIT_TIMEOUT: 70
     ports:
       - '8123:8123'
       - '9000:9000'

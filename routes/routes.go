@@ -18,7 +18,7 @@ import (
 
 func Create(w http.ResponseWriter, r *http.Request) {
 	var errmsg string
-	var payload map[string]interface{}
+	var payload map[string]string
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&payload)
 	defer r.Body.Close()
@@ -58,7 +58,7 @@ func Create(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
 		return
 	}
-	_, err = conn.Query(`SELECT * FROM GOODS WHERE project_id = ? and name = ?`, projectId, string(name))
+	_, err = conn.Query(`SELECT * FROM GOODS WHERE project_id = ? and name = ?`, projectId, payload["name"])
 	if err != nil {
 		errmsg = "Failed to get rows\n"
 		log.Printf(errmsg)
@@ -104,7 +104,7 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = rows.Close()
 
-	_ = redis_caching.InvalidateGoods()
+	_ = redis_caching.InvalidateGoodsList()
 
 	goodLog := types.GoodsLog{
 		ID:          resp.ID,
@@ -136,9 +136,18 @@ func Create(w http.ResponseWriter, r *http.Request) {
 
 func Update(w http.ResponseWriter, r *http.Request) {
 	var errmsg string
-	var payload map[string]interface{}
+	var err error
+	var payload map[string]string
 	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&payload)
+	err = decoder.Decode(&payload)
+	if err != nil {
+		errmsg = "Failed to decode payload\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
+		return
+	}
 	defer r.Body.Close()
 	if err != nil {
 		errmsg = "Failed to get a payload\n"
@@ -260,7 +269,7 @@ func Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = redis_caching.InvalidateGoods()
+	_ = redis_caching.InvalidateGoodsList()
 
 	goodLog := types.GoodsLog{
 		ID:          resp.ID,
@@ -354,7 +363,7 @@ func Remove(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = rows.Close()
 
-	_ = redis_caching.InvalidateGoods()
+	_ = redis_caching.InvalidateGoodsList()
 
 	goodLog := types.GoodsLog{
 		ID:          resp.ID,
@@ -380,6 +389,10 @@ func List(w http.ResponseWriter, r *http.Request) {
 	conn := postgresql.DBConn
 	var limit int
 	var offset int
+	var redis_limit int
+	var redis_offset int
+	var ok bool
+	var resp types.List
 	if limit, err = strconv.Atoi(URLVars["limit"]); err != nil {
 		errmsg = "Failed to convert the ID from string to int\n"
 		log.Printf(errmsg)
@@ -396,9 +409,26 @@ func List(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
 		return
 	}
-	list := types.List{}
-	list.Meta.Limit = limit
-	list.Meta.Offset = offset
+	if ok, resp, redis_limit, redis_offset, err = redis_caching.GetGoodsList(); ok && redis_limit == limit && redis_offset == offset && err == nil {
+		JSONResp, err := json.Marshal(resp)
+		if err != nil {
+			errmsg = "Failed to marshal row data into JSON\n"
+			log.Printf(errmsg)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(fmt.Sprintf("{\"message\": %s}", errmsg)))
+			return
+		}
+		var out bytes.Buffer
+		json.Indent(&out, JSONResp, "", "\t")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(out.Bytes())
+		return
+	}
+
+	resp.Meta.Limit = limit
+	resp.Meta.Offset = offset
 	rows, err := conn.Query(`SELECT count(*) FROM GOODS`)
 	if err != nil {
 		errmsg = "Failed to select the row count\n"
@@ -416,7 +446,7 @@ func List(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
 		return
 	}
-	err = rows.Scan(&list.Meta.Total)
+	err = rows.Scan(&resp.Meta.Total)
 	_ = rows.Close()
 	rows, err = conn.Query(`SELECT count(*) FROM GOODS WHERE removed = true`)
 	if err != nil {
@@ -435,7 +465,7 @@ func List(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
 		return
 	}
-	err = rows.Scan(&list.Meta.Removed)
+	err = rows.Scan(&resp.Meta.Removed)
 	_ = rows.Close()
 	rows, err = conn.Query(`SELECT * FROM GOODS ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
@@ -446,14 +476,152 @@ func List(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
 		return
 	}
+	goods := types.Goods{}
 	for rows.Next() {
-
-		err = rows.Scan(&list.Meta.Removed)
+		err = rows.Scan(&goods.ID, &goods.ProjectID, &goods.Name, &goods.Description, &goods.Priority, &goods.Removed, &goods.CreatedAt)
+		if err != nil {
+			errmsg = "Failed to scan rows\n"
+			log.Printf(errmsg)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
+			return
+		}
+		resp.Goods = append(resp.Goods, goods)
 	}
+	redis_caching.SetGoodsList(resp, limit, offset)
+	JSONResp, err := json.Marshal(resp)
+	if err != nil {
+		errmsg = "Failed to marshal row data into JSON\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s}", errmsg)))
+		return
+	}
+	var out bytes.Buffer
+	json.Indent(&out, JSONResp, "", "\t")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(out.Bytes())
 }
 
 func Reprioritize(w http.ResponseWriter, r *http.Request) {
+	var errmsg string
+	var err error
+	var payload map[string]int
+	decoder := json.NewDecoder(r.Body)
+	err = decoder.Decode(&payload)
+	if err != nil {
+		errmsg = "Failed to decode payload\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
+		return
+	}
+	defer r.Body.Close()
+	URLVars := mux.Vars(r)
+	conn := postgresql.DBConn
+	var id int
+	var projectId int
+	if id, err = strconv.Atoi(URLVars["id"]); err != nil {
+		errmsg = "Failed to convert the ID from string to int\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
+		return
+	}
+	if projectId, err = strconv.Atoi(URLVars["projectId"]); err != nil {
+		errmsg = "Failed to convert the project ID from string to int\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
+		return
+	}
+	if _, ok := payload["newPriority"]; ok == false || payload["newPriority"] == 0 {
+		errmsg = "No name key in payload or name value is zero\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg)))
+		return
+	}
+	rows, err := conn.Query(`SELECT * FROM GOODS WHERE id = ? AND project_id = ?`, id, projectId)
+	if err != nil {
+		errmsg = "Failed to select the row for reprioritizing\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
+		return
+	}
+	if !rows.Next() {
+		errmsg = "No selected rows\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"code\": 3, \"message\": errors.good.notFound, \"details\": {}}")))
+		return
+	}
+	_, err = conn.Exec("UPDATE GOODS SET priority = ? WHERE id = ? AND project_id = ?",
+		payload["newPriority"],
+		id,
+		projectId)
+	if err != nil {
+		errmsg = "Failed to reprioritize the row\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
+		return
+	}
+	good := types.Goods{}
+	resp := types.Priorities{}
+	priority := types.Priority{}
+	err = rows.Scan(&good.ID, &good.ProjectID, &good.Name, &good.Description, &good.Priority, &good.Removed, &good.CreatedAt)
+	if err != nil {
+		errmsg = "Failed to scan rows\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s, %s}", errmsg, err.Error())))
+		return
+	}
+	_ = rows.Close()
+
+	_ = redis_caching.InvalidateGoodsList()
+
+	goodLog := types.GoodsLog{
+		ID:          good.ID,
+		ProjectID:   good.ProjectID,
+		Name:        good.Name,
+		Description: good.Description,
+		Priority:    payload["newPriority"],
+		Removed:     good.Removed,
+		EventTime:   time.Now(),
+	}
+	goodJSON, _ := json.Marshal(goodLog)
+	_ = nats_queueing.NatsConn.Publish(os.Getenv("NATS_QUEUE"), goodJSON)
+
+	priority.ID = id
+	priority.Priority = payload["newPriority"]
+	resp.Priorities = append(resp.Priorities, priority)
+
+	JSONResp, err := json.Marshal(resp)
+	if err != nil {
+		errmsg = "Failed to marshal row data into JSON\n"
+		log.Printf(errmsg)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(fmt.Sprintf("{\"message\": %s}", errmsg)))
+		return
+	}
+	var out bytes.Buffer
+	json.Indent(&out, JSONResp, "", "\t")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"message": "get called"}`))
+	w.Write(out.Bytes())
 }

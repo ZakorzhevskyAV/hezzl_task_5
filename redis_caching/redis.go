@@ -29,24 +29,37 @@ func RedisConnect() error {
 	return nil
 }
 
-func GetGoods(key string) (bool, []types.Goods) {
-	jsonData, _ := RedisClient.Get(ctx, key).Result()
-	if jsonData == "" {
-		return false, nil
+func GetGoodsList() (bool, types.List, int, int, error) {
+	JSONGoodsList, _ := RedisClient.Get(ctx, "goods_list").Result()
+	limitstr, _ := RedisClient.Get(ctx, "limit").Result()
+	limit, err := strconv.Atoi(limitstr)
+	if err != nil {
+		return false, types.List{}, 0, 0, err
 	}
+	offsetstr, _ := RedisClient.Get(ctx, "offset").Result()
+	offset, err := strconv.Atoi(offsetstr)
+	if err != nil {
+		return false, types.List{}, 0, 0, err
+	}
+	if JSONGoodsList == "" {
+		return false, types.List{}, 0, 0, err
+	}
+	var goodsList types.List
+	_ = json.Unmarshal([]byte(JSONGoodsList), &goodsList)
 
-	var resp []types.Goods
-	_ = json.Unmarshal([]byte(jsonData), &resp)
-
-	return true, resp
+	return true, goodsList, limit, offset, err
 }
 
-func SetGoods(key string, goods []types.Goods) {
-	jsonData, _ := json.Marshal(goods)
-	RedisClient.Set(ctx, key, jsonData, time.Minute)
+func SetGoodsList(goodsList types.List, limit int, offset int) {
+	JSONGoodsList, _ := json.Marshal(goodsList)
+	RedisClient.Set(ctx, "goods_list", JSONGoodsList, time.Minute)
+	RedisClient.Set(ctx, "limit", limit, time.Minute)
+	RedisClient.Set(ctx, "offset", offset, time.Minute)
 }
 
-func InvalidateGoods() error {
-	err := RedisClient.Del(ctx, "goods").Err()
+func InvalidateGoodsList() error {
+	err := RedisClient.Del(ctx, "goods_list").Err()
+	err = RedisClient.Del(ctx, "limit").Err()
+	err = RedisClient.Del(ctx, "offset").Err()
 	return err
 }

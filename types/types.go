@@ -33,3 +33,12 @@ type List struct {
 	Meta  Meta    `json:"meta"`
 	Goods []Goods `json:"goods"`
 }
+
+type Priority struct {
+	ID       int `json:"id"`
+	Priority int `json:"priority"`
+}
+
+type Priorities struct {
+	Priorities []Priority `json:"priorities"`
+}
